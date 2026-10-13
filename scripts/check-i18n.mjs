@@ -5,8 +5,9 @@
 // product names, protocol names, the endonyms in the language picker.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("..", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SRC = join(ROOT, "src");
 const LOCALES = join(SRC, "shared/i18n/locales");
 
@@ -88,15 +89,18 @@ for (const file of files) {
 
 const en = JSON.parse(readFileSync(join(LOCALES, "en.json"), "utf8"));
 const zh = JSON.parse(readFileSync(join(LOCALES, "zh.json"), "utf8"));
+const ru = JSON.parse(readFileSync(join(LOCALES, "ru.json"), "utf8"));
 const missingEn = [...called].filter((k) => !(k in en)).sort();
 const missingZh = Object.keys(en).filter((k) => !(k in zh)).sort();
+const missingRu = Object.keys(en).filter((k) => !(k in ru)).sort();
 const unused = Object.keys(en).filter((k) => !called.has(k)).sort();
 
 for (const [f, line, what] of problems) console.log(`${f}:${line}  ${what}`);
 if (missingEn.length) console.log(`\nkeys called but not in en.json:\n  ${missingEn.join("\n  ")}`);
 if (missingZh.length) console.log(`\nkeys in en.json but not in zh.json:\n  ${missingZh.join("\n  ")}`);
+if (missingRu.length) console.log(`\nkeys in en.json but not in ru.json:\n  ${missingRu.join("\n  ")}`);
 if (unused.length) console.log(`\nkeys in en.json that nothing calls:\n  ${unused.join("\n  ")}`);
 
-const bad = problems.length + missingEn.length + missingZh.length + unused.length;
+const bad = problems.length + missingEn.length + missingZh.length + missingRu.length + unused.length;
 console.log(bad ? `\n${bad} problem(s)` : `i18n OK — ${Object.keys(en).length} keys, all called, all translated`);
 process.exit(bad ? 1 : 0);
