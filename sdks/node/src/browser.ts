@@ -19,6 +19,19 @@ import { parseProxy, probeUdp, proxyToArg, type ParsedProxy } from "./proxy.js";
 import type { Runtime } from "./runtime.js";
 import { applyScreenStrategy, defaultScreenModeFor, type ScreenStrategy } from "./screen.js";
 
+/** The automation flag the launcher ships when CDP is requested — mirrors the
+ * desktop launcher's behavior. It is emitted alongside the remote-debugging
+ * arguments and only when CDP is enabled. */
+const SHARDX_AUTOMATION_ARG = "--shardx-automation";
+
+/** CDP-related launch arguments, assembled only when CDP is enabled.
+ * Exported for testing; calling code should use `Browser.launch`. */
+export function cdpLaunchArgs(cdp: boolean): string[] {
+  return cdp
+    ? ["--remote-debugging-port=0", "--remote-allow-origins=*", SHARDX_AUTOMATION_ARG]
+    : [];
+}
+
 export type WebRtcMode   = "auto" | "block" | "tcp_only";
 /** Legacy alias retained for back-compat; prefer `ScreenStrategy`. */
 export type ScreenMode   = ScreenStrategy;
@@ -190,8 +203,8 @@ export class Browser {
     const cdpMarker = join(udd, "DevToolsActivePort");
     if (opts.cdp) {
       if (existsSync(cdpMarker)) rmSync(cdpMarker, { force: true });
-      argv.push("--remote-debugging-port=0", "--remote-allow-origins=*");
     }
+    argv.push(...cdpLaunchArgs(opts.cdp ?? false));
     if (opts.headless) argv.push("--headless=new");
     if (opts.extraArgs) argv.push(...opts.extraArgs);
 
