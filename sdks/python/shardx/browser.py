@@ -60,6 +60,18 @@ def apply_noise_seeds(config: dict, profile_id: str) -> None:
             block["seed"] = _noise_seed(profile_id, slot)
 
 
+# CDP-related args emitted alongside remote-debugging flags — only when CDP is
+# requested; never present for plain headless / headed sessions.
+_SHARDX_AUTOMATION_ARG = "--shardx-automation"
+
+
+def _cdp_launch_args(cdp: bool) -> list[str]:
+    """Return remote-debugging + automation args when *cdp* is True, else empty."""
+    if cdp:
+        return ["--remote-debugging-port=0", "--remote-allow-origins=*", _SHARDX_AUTOMATION_ARG]
+    return []
+
+
 @dataclass
 class BrowserSession:
     pid: int
@@ -201,7 +213,8 @@ class Browser:
                 argv.append(f"--shardx-webrtc-public-ip={ip}")
         if cdp:
             (udd / "DevToolsActivePort").unlink(missing_ok=True)
-            argv += ["--remote-debugging-port=0", "--remote-allow-origins=*"]
+        # CDP-related launch arguments, assembled only when CDP is enabled.
+        argv += _cdp_launch_args(cdp)
         if headless:
             argv.append("--headless=new")
         if extra_args:

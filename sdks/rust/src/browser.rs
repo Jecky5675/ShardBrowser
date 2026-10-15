@@ -16,6 +16,24 @@ use crate::proxy::{parse_proxy, probe_udp, proxy_to_arg, ParsedProxy, ProxySchem
 use crate::runtime::Runtime;
 use crate::screen::{apply_screen_strategy, default_screen_mode_for, ScreenStrategy};
 
+/// CDP-related args emitted alongside remote-debugging flags — only when CDP
+/// is requested. The `--shardx-automation` flag is never emitted for plain
+/// headed or headless sessions without CDP.
+const SHARDX_AUTOMATION_ARG: &str = "--shardx-automation";
+
+/// Return the remote-debugging + automation args when `cdp` is `true`.
+fn cdp_launch_args(cdp: bool) -> Vec<String> {
+    if cdp {
+        vec![
+            "--remote-debugging-port=0".into(),
+            "--remote-allow-origins=*".into(),
+            SHARDX_AUTOMATION_ARG.into(),
+        ]
+    } else {
+        vec![]
+    }
+}
+
 /// Deterministic non-zero 32-bit FNV-1a of `<id>::<slot>`.
 fn noise_seed(id: &str, slot: &str) -> u32 {
     let mut h: u32 = 2166136261;
@@ -146,7 +164,11 @@ impl Browser {
         Self { runtime }
     }
 
-    pub async fn launch(&self, mut profile: Profile, opts: LaunchOptions) -> Result<BrowserSession> {
+    pub async fn launch(
+        &self,
+        mut profile: Profile,
+        opts: LaunchOptions,
+    ) -> Result<BrowserSession> {
         self.runtime.install(false).await?;
 
         let parsed: Option<ParsedProxy> = match &opts.proxy {
@@ -168,7 +190,9 @@ impl Browser {
         let mut proxy_udp_ms: Option<u128> = None;
         if let Some(p) = &parsed {
             if p.scheme == ProxyScheme::Socks5 {
-                proxy_udp_ms = probe_udp(p, opts.probe_timeout_ms.unwrap_or(6000)).await.ok();
+                proxy_udp_ms = probe_udp(p, opts.probe_timeout_ms.unwrap_or(6000))
+                    .await
+                    .ok();
             }
         }
         let udp_ok = proxy_udp_ms.is_some();
@@ -218,7 +242,14 @@ impl Browser {
         }
         if let Some(p) = &parsed {
             argv.push(format!("--proxy-server={}", proxy_to_arg(p)));
-            argv.push(if quic_enabled { "--enable-quic" } else { "--disable-quic" }.into());
+            argv.push(
+                if quic_enabled {
+                    "--enable-quic"
+                } else {
+                    "--disable-quic"
+                }
+                .into(),
+            );
         }
         match webrtc_mode {
             WebRtcMode::Block => {
@@ -251,9 +282,8 @@ impl Browser {
         if opts.cdp {
             let marker = udd.join("DevToolsActivePort");
             let _ = std::fs::remove_file(&marker);
-            argv.push("--remote-debugging-port=0".into());
-            argv.push("--remote-allow-origins=*".into());
         }
+        argv.extend(cdp_launch_args(opts.cdp));
         if opts.headless {
             argv.push("--headless=new".into());
         }
@@ -319,4 +349,26 @@ async fn read_cdp_endpoint(udd: &std::path::Path, timeout_ms: u64) -> Option<Str
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cdp_launch_args_enabled() {
+        let args = cdp_launch_args(true);
+        assert!(args.iter().any(|a| a == "--remote-debugging-port=0"));
+        assert!(args.iter().any(|a| a == "--remote-allow-origins=*"));
+        assert!(args.iter().any(|a| a == SHARDX_AUTOMATION_ARG));
+        assert_eq!(args.last().unwrap(), SHARDX_AUTOMATION_ARG);
+    }
+
+    #[test]
+    fn test_cdp_launch_args_disabled() {
+        let args = cdp_launch_args(false);
+        assert!(args.is_empty());
+        assert!(!args.iter().any(|a| a == SHARDX_AUTOMATION_ARG));
+        assert!(!args.iter().any(|a| a == "--remote-debugging-port=0"));
+    }
 }
